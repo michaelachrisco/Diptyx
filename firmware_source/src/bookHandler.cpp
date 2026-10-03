@@ -827,55 +827,55 @@ void BookHandler::listBooks(void)
                 rtc_clearCurrentlyParsing();
             }
             // else
-            {
-                rtc_setCurrentlyParsing(fileName);
-                Epub *epub = new Epub(fullPath);
-                ESP_LOGI(TAG, "Indexing new book: %s", fullPath.c_str());
-                vTaskDelay(20);
+            // {
+            //     rtc_setCurrentlyParsing(fileName);
+            //     Epub *epub = new Epub(fullPath);
+            //     ESP_LOGI(TAG, "Indexing new book: %s", fullPath.c_str());
+            //     vTaskDelay(20);
 
-                if (epub->load()) {
-                    std::string title = epub->get_title();
-                    std::string author = epub->get_author();
-                    dev.notificationHandler->drawIndexingNotification(title);
+            //     if (epub->load()) {
+            //         std::string title = epub->get_title();
+            //         std::string author = epub->get_author();
+            //         dev.notificationHandler->drawIndexingNotification(title);
 
-                    Reader reader;
-                    book = new Book(fileName,
-                                    title,
-                                    author,
-                                    0,
-                                    0,
-                                    std::vector<int> {},
-                                    currentRS);
-                    book->renderSettings.fontSize=-1; //change this to some bad value so it is forced to re-index on opening
-                    //reader.init(book, nullptr);
-                    //reader.indexPages(); //don't init here actually, it is done upon first opening
-                    this->bookList.push_back(book);
-                    indexedBooks[fileName] = book;
+            //         Reader reader;
+            //         book = new Book(fileName,
+            //                         title,
+            //                         author,
+            //                         0,
+            //                         0,
+            //                         std::vector<int> {},
+            //                         currentRS);
+            //         book->renderSettings.fontSize=-1; //change this to some bad value so it is forced to re-index on opening
+            //         //reader.init(book, nullptr);
+            //         //reader.indexPages(); //don't init here actually, it is done upon first opening
+            //         this->bookList.push_back(book);
+            //         indexedBooks[fileName] = book;
 
-                    // Save immediately to LittleFS
-                    saveBook(book);
-                }
-                else
-                {
-                    //if the epub loading is unsuccessful, we also store the epub as malformed and inform the user
-                    dev.notificationHandler->drawErrorNotification(fileName);
-                    book = new Book(fileName,
-                                        fileName,
-                                        std::string("error during parsing"),
-                                        0,
-                                        0,
-                                        std::vector<int> {},
-                                        currentRS);
-                    book->badParse = true;
-                    this->bookList.push_back(book);
-                    indexedBooks[fileName] = book;
-                    // Save immediately to LittleFS
-                    saveBook(book);
-                    vTaskDelay(100);
-                }
-                delete epub;
-                rtc_clearCurrentlyParsing();
-            }
+            //         // Save immediately to LittleFS
+            //         saveBook(book);
+            //     }
+            //     else
+            //     {
+            //         //if the epub loading is unsuccessful, we also store the epub as malformed and inform the user
+            //         dev.notificationHandler->drawErrorNotification(fileName);
+            //         book = new Book(fileName,
+            //                             fileName,
+            //                             std::string("error during parsing"),
+            //                             0,
+            //                             0,
+            //                             std::vector<int> {},
+            //                             currentRS);
+            //         book->badParse = true;
+            //         this->bookList.push_back(book);
+            //         indexedBooks[fileName] = book;
+            //         // Save immediately to LittleFS
+            //         saveBook(book);
+            //         vTaskDelay(100);
+            //     }
+            //     delete epub;
+            //     rtc_clearCurrentlyParsing();
+            // }
         }
 
         if (dev.activeBookPath.empty()) dev.activeBookPath = fileName;
