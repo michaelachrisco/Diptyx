@@ -733,71 +733,151 @@ int Reader::renderTxtPage(
 )
 {
     if (!txt || !renderer || !book)
-    {
         return -1;
-    }
 
     renderer->clearScreenBuffer(framebuffer);
     renderer->framebuffer = framebuffer;
-    //testing!! REmove later.
-ESP_LOGI(
-    TAG,
-    "TXT RENDER: page=%d starts=%d total=%d savedCurrent=%d",
-    pageIndex,
-    static_cast<int>(txtPageStarts.size()),
-    book->totalPageCount,
-    book->currentPage
-);
 
-    // This is the padded second page of an odd-page book.
+    // 1. Did we enter the function?
+    renderer->drawString(
+        40, 60, "ENTER", 1, false, false, true
+    );
+
+    // 2. Is the requested page valid?
     if (pageIndex >= static_cast<int>(txtPageStarts.size()))
     {
-        renderer->drawPageOverlay(
-            framebuffer,
-            pageIndex + 1,
-            book->totalPageCount
+        renderer->drawString(
+            40, 100, "OUT OF RANGE", 1, false, false, true
         );
-
         return 0;
     }
+
+    renderer->drawString(
+        40, 100, "IN RANGE", 1, false, false, true
+    );
 
     const TxtPageStart pageStart =
         txtPageStarts[pageIndex];
 
+    // 3. Does seek work?
     if (!txt->seek(pageStart.lineOffset))
     {
-        return -1;
+        renderer->drawString(
+            40, 140, "SEEK FAIL", 1, false, false, true
+        );
+        return 0;
     }
 
-    const int fontHeight =
-        renderer->fontHandler.currentFont.lineHeight +
-        Device::getInstance().renderSettings.lineSpacing;
+    renderer->drawString(
+        40, 140, "SEEK OK", 1, false, false, true
+    );
 
-    const int maxLines =
-        (EPD_WIDTH / fontHeight) -
-        Device::getInstance().renderSettings.marginsVertical -
-        1;
-
-    int currentLine =
-        Device::getInstance().renderSettings.marginsVertical;
-
-    bool firstLine = true;
-
+    // 4. Does readLine work?
     std::string line;
 
-    while (currentLine < maxLines)
+    if (!txt->readLine(line))
     {
-        if (!txt->readLine(line))
-        {
-            break;
-        }
+        renderer->drawString(
+            40, 180, "READ FAIL", 1, false, false, true
+        );
+        return 0;
+    }
 
-        ESP_LOGI(
-    TAG,
-    "TXT DEBUG: line length=%d first byte=%d",
-    static_cast<int>(line.size()),
-    line.empty() ? -1 : static_cast<unsigned char>(line[0])
-);
+    renderer->drawString(
+        40, 180, "READ OK", 1, false, false, true
+    );
+
+    // 5. Draw actual file data
+    std::string preview = line.substr(0, 30);
+
+    renderer->drawString(
+        40, 220, preview, 1, false, false, true
+    );
+
+    ESP_LOGI(
+        TAG,
+        "TXT DIAG page=%d starts=%d offset=%ld len=%d text='%s'",
+        pageIndex,
+        static_cast<int>(txtPageStarts.size()),
+        pageStart.lineOffset,
+        static_cast<int>(line.size()),
+        line.c_str()
+    );
+
+    return 0;
+}
+
+// int Reader::renderTxtPage(
+//     int pageIndex,
+//     unsigned char *framebuffer
+// )
+// {
+//     if (!txt || !renderer || !book)
+//     {
+//         return -1;
+//     }
+
+//     renderer->clearScreenBuffer(framebuffer);
+//     renderer->framebuffer = framebuffer;
+//     //testing!! REmove later.
+// ESP_LOGI(
+//     TAG,
+//     "TXT RENDER: page=%d starts=%d total=%d savedCurrent=%d",
+//     pageIndex,
+//     static_cast<int>(txtPageStarts.size()),
+//     book->totalPageCount,
+//     book->currentPage
+// );
+
+//     // This is the padded second page of an odd-page book.
+//     if (pageIndex >= static_cast<int>(txtPageStarts.size()))
+//     {
+//         renderer->drawPageOverlay(
+//             framebuffer,
+//             pageIndex + 1,
+//             book->totalPageCount
+//         );
+
+//         return 0;
+//     }
+
+//     const TxtPageStart pageStart =
+//         txtPageStarts[pageIndex];
+
+//     if (!txt->seek(pageStart.lineOffset))
+//     {
+//         return -1;
+//     }
+
+//     const int fontHeight =
+//         renderer->fontHandler.currentFont.lineHeight +
+//         Device::getInstance().renderSettings.lineSpacing;
+
+//     const int maxLines =
+//         (EPD_WIDTH / fontHeight) -
+//         Device::getInstance().renderSettings.marginsVertical -
+//         1;
+
+//     int currentLine =
+//         Device::getInstance().renderSettings.marginsVertical;
+
+//     bool firstLine = true;
+
+//     std::string line;
+
+//     while (currentLine < maxLines)
+//     {
+//         if (!txt->readLine(line))
+//         {
+//             break;
+//         }
+
+//         ESP_LOGI(
+//     TAG,
+//     "TXT DEBUG: line length=%d first byte=%d",
+//     static_cast<int>(line.size()),
+//     line.empty() ? -1 : static_cast<unsigned char>(line[0])
+// );
 
 renderer->drawString(
     40,
