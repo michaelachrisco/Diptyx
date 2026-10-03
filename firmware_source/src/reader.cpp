@@ -742,15 +742,15 @@ int Reader::renderTxtPage(
     //testing!! REmove later.
     ESP_LOGI(TAG, "TXT TEXT TEST");
 
-    renderer->drawString(
-        40,
-        100,
-        "TEST",
-        1,
-        false,
-        false,
-        true
-    );
+    // renderer->drawString(
+    //     40,
+    //     100,
+    //     "TEST",
+    //     1,
+    //     false,
+    //     false,
+    //     true
+    // );
 
     // This is the padded second page of an odd-page book.
     if (pageIndex >= static_cast<int>(txtPageStarts.size()))
@@ -794,6 +794,39 @@ int Reader::renderTxtPage(
         {
             break;
         }
+
+        ESP_LOGI(
+    TAG,
+    "TXT DEBUG: line length=%d first byte=%d",
+    static_cast<int>(line.size()),
+    line.empty() ? -1 : static_cast<unsigned char>(line[0])
+);
+
+renderer->drawString(
+    40,
+    100,
+    line.empty() ? "EMPTY" : "DATA",
+    1,
+    false,
+    false,
+    true
+);
+
+if (!line.empty())
+{
+    renderer->drawCharacter(
+        40,
+        140,
+        static_cast<unsigned char>(line[0]),
+        false,
+        false,
+        1,
+        true,
+        true
+    );
+}
+
+return 0;
 
         std::vector<int> codePoints =
             utf8ToCodePoints(line);
