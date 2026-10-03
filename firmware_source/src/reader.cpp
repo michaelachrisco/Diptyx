@@ -703,227 +703,131 @@ void Reader::indexTxtPages()
     {
         txtPageStarts.push_back({0, 0});
     }
+const int contentPageCount =
+    static_cast<int>(txtPageStarts.size());
 
-    const int contentPageCount =
-        static_cast<int>(txtPageStarts.size());
+book->chapterCount = 1;
 
-    book->chapterCount = 1;
+book->chapterPageCounts.clear();
+book->chapterPageCounts.push_back(
+    contentPageCount
+);
 
-    book->chapterPageCounts.clear();
-    book->chapterPageCounts.push_back(
-        contentPageCount
-    );
+// Reader works in two-page spreads, so total page count
+// is always even.
+book->totalPageCount =
+    ((contentPageCount + 1) / 2) * 2;
 
-    // Reader works in two-page spreads, so total page count
-    // is always even.
-    book->totalPageCount =
-        ((contentPageCount + 1) / 2) * 2;
-
-    ESP_LOGI(
-        TAG,
-        "TXT indexed: %d content pages, %d total pages",
-        contentPageCount,
-        book->totalPageCount
-    );
+// currentPage is the left page of a two-page spread.
+// Normalize it to an even page and clamp it to the
+// last valid spread.
+if (book->currentPage < 0)
+{
+    book->currentPage = 0;
 }
 
+book->currentPage = (book->currentPage / 2) * 2;
+
+const int lastSpreadStart =
+    ((contentPageCount - 1) / 2) * 2;
+
+if (book->currentPage > lastSpreadStart)
+{
+    ESP_LOGW(
+        TAG,
+        "TXT currentPage %d out of range; clamping to %d",
+        book->currentPage,
+        lastSpreadStart
+    );
+
+    book->currentPage = lastSpreadStart;
+}
+
+ESP_LOGI(
+    TAG,
+    "TXT indexed: %d content pages, %d total pages, currentPage=%d",
+    contentPageCount,
+    book->totalPageCount,
+    book->currentPage
+);
+}
 int Reader::renderTxtPage(
     int pageIndex,
     unsigned char *framebuffer
 )
 {
     if (!txt || !renderer || !book)
+    {
         return -1;
+    }
 
     renderer->clearScreenBuffer(framebuffer);
     renderer->framebuffer = framebuffer;
 
-    // 1. Did we enter the function?
-    renderer->drawString(
-        40, 60, "ENTER", 1, false, false, true
-    );
-
-    // 2. Is the requested page valid?
-    if (pageIndex >= static_cast<int>(txtPageStarts.size()))
+    // A TXT page must correspond to an indexed page start.
+    // The right side of the final spread may be a padded page.
+    if (pageIndex < 0 ||
+        pageIndex >= static_cast<int>(txtPageStarts.size()))
     {
-        renderer->drawString(
-            40, 100, "OUT OF RANGE", 1, false, false, true
+        renderer->drawPageOverlay(
+            framebuffer,
+            pageIndex + 1,
+            book->totalPageCount
         );
+
         return 0;
     }
-
-    renderer->drawString(
-        40, 100, "IN RANGE", 1, false, false, true
-    );
 
     const TxtPageStart pageStart =
         txtPageStarts[pageIndex];
 
-    // 3. Does seek work?
     if (!txt->seek(pageStart.lineOffset))
     {
-        renderer->drawString(
-            40, 140, "SEEK FAIL", 1, false, false, true
+        ESP_LOGE(
+            TAG,
+            "Failed to seek TXT page %d to offset %ld",
+            pageIndex,
+            pageStart.lineOffset
         );
-        return 0;
+
+        return -1;
     }
 
-    renderer->drawString(
-        40, 140, "SEEK OK", 1, false, false, true
-    );
+    const int fontHeight =
+        renderer->fontHandler.currentFont.lineHeight +
+        Device::getInstance().renderSettings.lineSpacing;
 
-    // 4. Does readLine work?
+    const int maxLines =
+        (EPD_WIDTH / fontHeight) -
+        Device::getInstance().renderSettings.marginsVertical -
+        1;
+
+    int currentLine =
+        Device::getInstance().renderSettings.marginsVertical;
+
+    bool firstLine = true;
+
     std::string line;
 
-    if (!txt->readLine(line))
+    while (currentLine < maxLines)
     {
-        renderer->drawString(
-            40, 180, "READ FAIL", 1, false, false, true
-        );
-        return 0;
-    }
-
-    renderer->drawString(
-        40, 180, "READ OK", 1, false, false, true
-    );
-
-    // 5. Draw actual file data
-    std::string preview = line.substr(0, 30);
-
-    renderer->drawString(
-        40, 220, preview, 1, false, false, true
-    );
-
-    ESP_LOGI(
-        TAG,
-        "TXT DIAG page=%d starts=%d offset=%ld len=%d text='%s'",
-        pageIndex,
-        static_cast<int>(txtPageStarts.size()),
-        pageStart.lineOffset,
-        static_cast<int>(line.size()),
-        line.c_str()
-    );
-
-    return 0;
-}
-
-// int Reader::renderTxtPage(
-//     int pageIndex,
-//     unsigned char *framebuffer
-// )
-// {
-//     if (!txt || !renderer || !book)
-//     {
-//         return -1;
-//     }
-
-//     renderer->clearScreenBuffer(framebuffer);
-//     renderer->framebuffer = framebuffer;
-//     //testing!! REmove later.
-// ESP_LOGI(
-//     TAG,
-//     "TXT RENDER: page=%d starts=%d total=%d savedCurrent=%d",
-//     pageIndex,
-//     static_cast<int>(txtPageStarts.size()),
-//     book->totalPageCount,
-//     book->currentPage
-// );
-
-//     // This is the padded second page of an odd-page book.
-//     if (pageIndex >= static_cast<int>(txtPageStarts.size()))
-//     {
-//         renderer->drawPageOverlay(
-//             framebuffer,
-//             pageIndex + 1,
-//             book->totalPageCount
-//         );
-
-//         return 0;
-//     }
-
-//     const TxtPageStart pageStart =
-//         txtPageStarts[pageIndex];
-
-//     if (!txt->seek(pageStart.lineOffset))
-//     {
-//         return -1;
-//     }
-
-//     const int fontHeight =
-//         renderer->fontHandler.currentFont.lineHeight +
-//         Device::getInstance().renderSettings.lineSpacing;
-
-//     const int maxLines =
-//         (EPD_WIDTH / fontHeight) -
-//         Device::getInstance().renderSettings.marginsVertical -
-//         1;
-
-//     int currentLine =
-//         Device::getInstance().renderSettings.marginsVertical;
-
-//     bool firstLine = true;
-
-//     std::string line;
-
-//     while (currentLine < maxLines)
-//     {
-//         if (!txt->readLine(line))
-//         {
-//             break;
-//         }
-
-//         ESP_LOGI(
-//     TAG,
-//     "TXT DEBUG: line length=%d first byte=%d",
-//     static_cast<int>(line.size()),
-//     line.empty() ? -1 : static_cast<unsigned char>(line[0])
-// );
-
-renderer->drawString(
-    40,
-    100,
-    line.empty() ? "EMPTY" : "DATA",
-    1,
-    false,
-    false,
-    true
-);
-
-if (!line.empty())
-{
-    renderer->drawCharacter(
-        40,
-        140,
-        static_cast<unsigned char>(line[0]),
-        false,
-        false,
-        1,
-        true,
-        true
-    );
-}
-
-return 0;
+        if (!txt->readLine(line))
+        {
+            break;
+        }
 
         std::vector<int> codePoints =
             utf8ToCodePoints(line);
-
-        ESP_LOGI(
-    TAG,
-    "TXT LINE: len=%d codepoints=%d text='%s'",
-    static_cast<int>(line.size()),
-    static_cast<int>(codePoints.size()),
-    line.c_str()
-);
 
         std::vector<std::pair<size_t, size_t>> segments =
             wrapTxtLine(codePoints, renderer);
 
         size_t firstSegment = 0;
 
+        // The page may begin partway through a long wrapped source line.
         if (firstLine)
         {
-            for (size_t i = 0; i < segments.size(); i++)
+            for (size_t i = 0; i < segments.size(); ++i)
             {
                 if (segments[i].first >= pageStart.codePointOffset)
                 {
@@ -938,7 +842,7 @@ return 0;
             }
         }
 
-        for (size_t i = firstSegment; i < segments.size(); i++)
+        for (size_t i = firstSegment; i < segments.size(); ++i)
         {
             if (currentLine >= maxLines)
             {
@@ -969,20 +873,22 @@ return 0;
 
             const int xPos =
                 (GLYPH_WIDTH / 2) *
-                (1 + Device::getInstance()
-                          .renderSettings.marginsHorizontal);
+                (
+                    1 +
+                    Device::getInstance()
+                        .renderSettings.marginsHorizontal
+                );
 
-std::string testLine = line.substr(0, 60);
-
-renderer->drawString(
-    xPos,
-    yPos,
-    testLine,
-    1,
-    false,
-    false,
-    true
-);
+            renderer->drawString(
+                xPos,
+                yPos,
+                text,
+                1,
+                boldMask,
+                italicsMask,
+                true,
+                false
+            );
 
             currentLine++;
         }
