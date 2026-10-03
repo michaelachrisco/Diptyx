@@ -862,10 +862,12 @@ int Reader::renderTxtPage(
                 (1 + Device::getInstance()
                           .renderSettings.marginsHorizontal);
 
+std::string testLine = line.substr(0, 60);
+
 renderer->drawString(
     xPos,
     yPos,
-    line,
+    testLine,
     1,
     false,
     false,
