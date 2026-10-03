@@ -10,6 +10,7 @@
 #include <algorithm>
 #include "device.h"
 #include "esp_log.h"
+#include "TxtFile.h"
 static const char *TAG = "Bookhandler";
 
 RTC_NOINIT_ATTR char rtc_currently_parsing_book[MAX_BOOK_NAME] = {0};
@@ -21,6 +22,17 @@ bool ends_with_epub(const char *filename) {
 
     const char *ext = strrchr(filename, '.');
     return ext && strcasecmp(ext, ".epub") == 0;
+}
+
+bool is_supported_book(const char *filename)
+{
+    if (!filename || filename[0] == '.')
+    {
+        return false;
+    }
+
+    return ends_with_epub(filename) ||
+           TxtFile::isTxtPath(filename);
 }
 
 
@@ -649,10 +661,24 @@ void BookHandler::listBooks(void)
     // Step 2: Scan /sdcard and process each EPUB
     std::vector<std::string> foundPaths;
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_DIR) continue;
-        if (!ends_with_epub(entry->d_name)) continue;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (entry->d_type == DT_DIR)
+        {
+            continue;
+        }
+
+        if (!is_supported_book(entry->d_name))
+        {
+            continue;
+        }
+
         std::string fileName(entry->d_name);
+
+        const bool isEpub = ends_with_epub(fileName.c_str());
+        const bool isTxt = TxtFile::isTxtPath(fileName);
+
+
         foundPaths.push_back(fileName);
 
         Book *book = nullptr;
