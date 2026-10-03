@@ -712,6 +712,123 @@ void BookHandler::listBooks(void)
             else
             {
                 rtc_setCurrentlyParsing(fileName);
+                ESP_LOGI(TAG, "Indexing new book: %s", fullPath.c_str());
+                vTaskDelay(20);
+
+                if (isEpub)
+                {
+                    Epub *epub = new Epub(fullPath);
+
+                    if (epub->load())
+                    {
+                        std::string title = epub->get_title();
+                        std::string author = epub->get_author();
+
+                        dev.notificationHandler->drawIndexingNotification(title);
+
+                        Reader reader;
+
+                        book = new Book(
+                            fileName,
+                            title,
+                            author,
+                            0,
+                            0,
+                            std::vector<int>{},
+                            currentRS
+                        );
+
+                        // Force page indexing the first time the book is opened.
+                        book->renderSettings.fontSize = -1;
+
+                        this->bookList.push_back(book);
+                        indexedBooks[fileName] = book;
+
+                        saveBook(book);
+                    }
+                    else
+                    {
+                        dev.notificationHandler->drawErrorNotification(fileName);
+
+                        book = new Book(
+                            fileName,
+                            fileName,
+                            std::string("error during parsing"),
+                            0,
+                            0,
+                            std::vector<int>{},
+                            currentRS
+                        );
+
+                        book->badParse = true;
+
+                        this->bookList.push_back(book);
+                        indexedBooks[fileName] = book;
+
+                        saveBook(book);
+                        vTaskDelay(100);
+                    }
+
+                    delete epub;
+                }
+                else if (isTxt)
+                {
+                    TxtFile txt(fullPath);
+
+                    if (txt.load())
+                    {
+                        std::string title = txt.get_title();
+                        std::string author = txt.get_author();
+
+                        dev.notificationHandler->drawIndexingNotification(title);
+
+                        book = new Book(
+                            fileName,
+                            title,
+                            author,
+                            0,
+                            0,
+                            std::vector<int>{},
+                            currentRS
+                        );
+
+                        // TXT page count is calculated later by Reader.
+                        book->renderSettings.fontSize = -1;
+
+                        this->bookList.push_back(book);
+                        indexedBooks[fileName] = book;
+
+                        saveBook(book);
+                    }
+                    else
+                    {
+                        dev.notificationHandler->drawErrorNotification(fileName);
+
+                        book = new Book(
+                            fileName,
+                            fileName,
+                            std::string("error opening txt file"),
+                            0,
+                            0,
+                            std::vector<int>{},
+                            currentRS
+                        );
+
+                        book->badParse = true;
+
+                        this->bookList.push_back(book);
+                        indexedBooks[fileName] = book;
+
+                        saveBook(book);
+                        vTaskDelay(100);
+                    }
+                }
+
+                rtc_clearCurrentlyParsing();
+            }
+            // else
+            {
+                rtc_setCurrentlyParsing(fileName);
                 Epub *epub = new Epub(fullPath);
                 ESP_LOGI(TAG, "Indexing new book: %s", fullPath.c_str());
                 vTaskDelay(20);
