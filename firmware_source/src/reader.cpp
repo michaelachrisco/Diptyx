@@ -739,6 +739,18 @@ int Reader::renderTxtPage(
 
     renderer->clearScreenBuffer(framebuffer);
     renderer->framebuffer = framebuffer;
+    //testing!! REmove later.
+    ESP_LOGI(TAG, "TXT TEXT TEST");
+
+    renderer->drawString(
+        40,
+        100,
+        "TEST",
+        1,
+        false,
+        false,
+        true
+    );
 
     // This is the padded second page of an odd-page book.
     if (pageIndex >= static_cast<int>(txtPageStarts.size()))
@@ -785,6 +797,14 @@ int Reader::renderTxtPage(
 
         std::vector<int> codePoints =
             utf8ToCodePoints(line);
+
+        ESP_LOGI(
+    TAG,
+    "TXT LINE: len=%d codepoints=%d text='%s'",
+    static_cast<int>(line.size()),
+    static_cast<int>(codePoints.size()),
+    line.c_str()
+);
 
         std::vector<std::pair<size_t, size_t>> segments =
             wrapTxtLine(codePoints, renderer);
@@ -842,13 +862,15 @@ int Reader::renderTxtPage(
                 (1 + Device::getInstance()
                           .renderSettings.marginsHorizontal);
 
-            renderer->drawText(
-                xPos,
-                yPos,
-                text.data(),
-                static_cast<int>(text.size()),
-                1
-            );
+renderer->drawString(
+    xPos,
+    yPos,
+    line,
+    1,
+    false,
+    false,
+    true
+);
 
             currentLine++;
         }
