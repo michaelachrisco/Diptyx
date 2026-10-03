@@ -740,17 +740,14 @@ int Reader::renderTxtPage(
     renderer->clearScreenBuffer(framebuffer);
     renderer->framebuffer = framebuffer;
     //testing!! REmove later.
-    ESP_LOGI(TAG, "TXT TEXT TEST");
-
-    // renderer->drawString(
-    //     40,
-    //     100,
-    //     "TEST",
-    //     1,
-    //     false,
-    //     false,
-    //     true
-    // );
+ESP_LOGI(
+    TAG,
+    "TXT RENDER: page=%d starts=%d total=%d savedCurrent=%d",
+    pageIndex,
+    static_cast<int>(txtPageStarts.size()),
+    book->totalPageCount,
+    book->currentPage
+);
 
     // This is the padded second page of an odd-page book.
     if (pageIndex >= static_cast<int>(txtPageStarts.size()))
