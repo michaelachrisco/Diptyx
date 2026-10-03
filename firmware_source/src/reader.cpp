@@ -9,6 +9,8 @@
 #include "device.h"
 #include "esp_timer.h"
 #include "menuHandler.h"
+#include <algorithm>
+#include <utility>
 
 static const char *TAG = "reader";
 
@@ -30,8 +32,16 @@ Reader::~Reader()
     free(rightPageFrameBuffer);
     free(rightPageFrameBufferNext);
     free(rightPageFrameBufferPrevious);
-    if (epub) {
-    delete epub;
+    if (epub)
+    {
+        delete epub;
+        epub = nullptr;
+    }
+
+    if (txt)
+    {
+        delete txt;
+        txt = nullptr;
     }
 }
 
@@ -51,19 +61,168 @@ int countBlackPixels(unsigned char* framebuffer)
     return sum;
 }
 
-void Reader::init(Book *book,Renderer* renderer)
+bool Reader::isTxtBook() const
+{
+    return txt != nullptr;
+}
+
+static std::vector<std::pair<size_t, size_t>>
+wrapTxtLine(
+    const std::vector<int>& codePoints,
+    Renderer *renderer
+)
+{
+    std::vector<std::pair<size_t, size_t>> segments;
+
+    // Preserve a completely empty source line as one visual line.
+    if (codePoints.empty())
+    {
+        segments.emplace_back(0, 0);
+        return segments;
+    }
+
+    const int maxWidth =
+        EPD_HEIGHT -
+        (Device::getInstance().renderSettings.marginsHorizontal *
+         2 * GLYPH_WIDTH + (GLYPH_WIDTH / 2));
+
+    size_t start = 0;
+
+    while (start < codePoints.size())
+    {
+        int currentWidth = 0;
+        size_t lastSpace = std::string::npos;
+        size_t i = start;
+
+        while (i < codePoints.size())
+        {
+            const int charWidth =
+                renderer->fontHandler.getFontCharWidth(codePoints[i]);
+
+            if (currentWidth + charWidth > maxWidth)
+            {
+                break;
+            }
+
+            currentWidth += charWidth;
+
+            if (codePoints[i] == ' ')
+            {
+                lastSpace = i;
+            }
+
+            ++i;
+        }
+
+        // Everything remaining fits.
+        if (i == codePoints.size())
+        {
+            segments.emplace_back(start, codePoints.size());
+            break;
+        }
+
+        // Prefer breaking at a space.
+        if (lastSpace != std::string::npos && lastSpace > start)
+        {
+            segments.emplace_back(start, lastSpace);
+
+            start = lastSpace + 1;
+
+            // Don't carry a run of wrapping spaces onto the next line.
+            while (start < codePoints.size() &&
+                   codePoints[start] == ' ')
+            {
+                ++start;
+            }
+        }
+        else
+        {
+            // A single word is wider than the screen.
+            // Force a character-level break.
+            if (i == start)
+            {
+                ++i;
+            }
+
+            segments.emplace_back(start, i);
+            start = i;
+        }
+    }
+
+    return segments;
+}
+
+void Reader::init(Book *book, Renderer* renderer)
 {
     this->renderer = renderer;
     this->book = book;
     this->currentBookPath = book->path;
     this->currentChapter = 0;
 
-    this->epub = new Epub(std::string("/sdcard/") + this->currentBookPath);
-    ESP_LOGI(TAG, "book path: %s", this->currentBookPath.c_str());
+    txtPageStarts.clear();
+
+    if (epub)
+    {
+        delete epub;
+        epub = nullptr;
+    }
+
+    if (txt)
+    {
+        delete txt;
+        txt = nullptr;
+    }
+
+    if (TxtFile::isTxtPath(this->currentBookPath))
+    {
+        txt = new TxtFile(
+            std::string("/sdcard/") + this->currentBookPath
+        );
+
+        ESP_LOGI(
+            TAG,
+            "Opening TXT book: %s",
+            this->currentBookPath.c_str()
+        );
+
+        if (!txt->load())
+        {
+            ESP_LOGE(
+                TAG,
+                "Failed to open TXT book: %s",
+                this->currentBookPath.c_str()
+            );
+
+            delete txt;
+            txt = nullptr;
+        }
+
+        return;
+    }
+
+    epub = new Epub(
+        std::string("/sdcard/") + this->currentBookPath
+    );
+
+    ESP_LOGI(
+        TAG,
+        "book path: %s",
+        this->currentBookPath.c_str()
+    );
+
     if (epub->load())
     {
-        ESP_LOGI(TAG, "book title: %s", (epub->get_title()).c_str());
-        ESP_LOGI(TAG, "first chapter: %s", (epub->get_spine_item(0)).c_str());
+        ESP_LOGI(
+            TAG,
+            "book title: %s",
+            epub->get_title().c_str()
+        );
+
+        ESP_LOGI(
+            TAG,
+            "first chapter: %s",
+            epub->get_spine_item(0).c_str()
+        );
     }
 }
 
@@ -80,23 +239,45 @@ int Reader::getCurrentPageAbsolute(int chapter, int page)
 
 int Reader::getCurrentChapter(int page)
 {
-    int pageCounter = page;
-    for(int i = 0;i<this->epub->get_spine_items_count();i++)
+    if (txt)
     {
-        pageCounter-= book->chapterPageCounts[i];
-        if(pageCounter<0) return i;
+        return 0;
     }
+
+    int pageCounter = page;
+
+    for (int i = 0; i < this->epub->get_spine_items_count(); i++)
+    {
+        pageCounter -= book->chapterPageCounts[i];
+
+        if (pageCounter < 0)
+        {
+            return i;
+        }
+    }
+
     return 0;
 }
 
 int Reader::getCurrentPageInChapter(int page)
 {
-    int pageCounter = page;
-    for(int i = 0;i<this->epub->get_spine_items_count();i++)
+    if (txt)
     {
-        if(pageCounter<book->chapterPageCounts[i]) return pageCounter;
-        pageCounter-= book->chapterPageCounts[i];
+        return page;
     }
+
+    int pageCounter = page;
+
+    for (int i = 0; i < this->epub->get_spine_items_count(); i++)
+    {
+        if (pageCounter < book->chapterPageCounts[i])
+        {
+            return pageCounter;
+        }
+
+        pageCounter -= book->chapterPageCounts[i];
+    }
+
     return 0;
 }
 
@@ -118,8 +299,38 @@ void Reader::doWhileListening(std::function<void()> func)
     Device::getInstance().setLatchTimeOut(100000);
 }
 
-int Reader::renderPages(unsigned char* leftPageFrameBuffer,unsigned char* rightPageFrameBuffer,int pageCacheIndex)
+int Reader::renderPages(
+    unsigned char* leftPageFrameBuffer,
+    unsigned char* rightPageFrameBuffer,
+    int pageCacheIndex
+)
 {
+    if (txt)
+    {
+        renderTxtPage(
+            book->currentPage,
+            leftPageFrameBuffer
+        );
+
+        renderTxtPage(
+            book->currentPage + 1,
+            rightPageFrameBuffer
+        );
+
+        pageChapterIndex[pageCacheIndex] = 0;
+        pageElementIndex[pageCacheIndex] = 0;
+        pageImagePresent[pageCacheIndex] = false;
+
+        if (checkBookMark())
+        {
+            renderer->drawBookMark(
+                rightPageFrameBuffer,
+                false
+            );
+        }
+
+        return 0;
+    }
     ESP_LOGI(TAG, "rendering page %d", book->currentPage);
     currentChapter = getCurrentChapter(book->currentPage);
     int currentPageInChapter = getCurrentPageInChapter(book->currentPage);
@@ -191,17 +402,38 @@ void Reader::openPage()
 
 void Reader::nextChapter()
 {
+    if (txt)
+    {
+        return;
+    }
+
     currentChapter = getCurrentChapter(book->currentPage);
-    if(currentChapter<book->chapterPageCounts.size()-1) currentChapter++;
-    book->currentPage = getCurrentPageAbsolute(currentChapter,0);
+
+    if (currentChapter < book->chapterPageCounts.size() - 1)
+    {
+        currentChapter++;
+    }
+
+    book->currentPage = getCurrentPageAbsolute(currentChapter, 0);
     openPage();
 }
 
 void Reader::prevChapter()
 {
+    if (txt)
+    {
+        return;
+    }
+
     currentChapter = getCurrentChapter(book->currentPage);
-    if(currentChapter>0 && getCurrentPageInChapter(book->currentPage)==0) currentChapter--;
-    book->currentPage = getCurrentPageAbsolute(currentChapter,0);
+
+    if (currentChapter > 0 &&
+        getCurrentPageInChapter(book->currentPage) == 0)
+    {
+        currentChapter--;
+    }
+
+    book->currentPage = getCurrentPageAbsolute(currentChapter, 0);
     openPage();
 }
 
@@ -339,6 +571,12 @@ void Reader::prevPage()
 
 void Reader::indexPages(void)
 {
+    if (txt)
+    {
+        indexTxtPages();
+        return;
+    }
+
     book->chapterPageCounts.clear();
     book->cachedImages.clear();
     book->totalPageCount = 0;
@@ -385,6 +623,286 @@ void Reader::indexPages(void)
             delete parser;
         } 
     }
+}
+
+void Reader::indexTxtPages()
+{
+    txtPageStarts.clear();
+
+    if (!txt)
+    {
+        return;
+    }
+
+    Renderer *activeRenderer =
+        renderer ? renderer : Device::getInstance().renderer;
+
+    if (!activeRenderer)
+    {
+        ESP_LOGE(TAG, "No renderer available for TXT indexing");
+        return;
+    }
+
+    if (!txt->rewind())
+    {
+        ESP_LOGE(TAG, "Failed to rewind TXT file");
+        return;
+    }
+
+    const int fontHeight =
+        activeRenderer->fontHandler.currentFont.lineHeight +
+        Device::getInstance().renderSettings.lineSpacing;
+
+    const int maxLines =
+        (EPD_WIDTH / fontHeight) -
+        Device::getInstance().renderSettings.marginsVertical -
+        1;
+
+    int currentLine =
+        Device::getInstance().renderSettings.marginsVertical;
+
+    // First page always starts at the beginning of the file.
+    txtPageStarts.push_back({0, 0});
+
+    std::string line;
+
+    while (true)
+    {
+        long lineOffset = 0;
+        long nextOffset = 0;
+
+        if (!txt->readLine(line, &lineOffset, &nextOffset))
+        {
+            break;
+        }
+
+        std::vector<int> codePoints =
+            utf8ToCodePoints(line);
+
+        std::vector<std::pair<size_t, size_t>> segments =
+            wrapTxtLine(codePoints, activeRenderer);
+
+        for (const auto &segment : segments)
+        {
+            if (currentLine >= maxLines)
+            {
+                txtPageStarts.push_back({
+                    lineOffset,
+                    segment.first
+                });
+
+                currentLine =
+                    Device::getInstance().renderSettings.marginsVertical;
+            }
+
+            currentLine++;
+        }
+    }
+
+    if (txtPageStarts.empty())
+    {
+        txtPageStarts.push_back({0, 0});
+    }
+const int contentPageCount =
+    static_cast<int>(txtPageStarts.size());
+
+book->chapterCount = 1;
+
+book->chapterPageCounts.clear();
+book->chapterPageCounts.push_back(
+    contentPageCount
+);
+
+// Reader works in two-page spreads, so total page count
+// is always even.
+book->totalPageCount =
+    ((contentPageCount + 1) / 2) * 2;
+
+// currentPage is the left page of a two-page spread.
+// Normalize it to an even page and clamp it to the
+// last valid spread.
+if (book->currentPage < 0)
+{
+    book->currentPage = 0;
+}
+
+book->currentPage = (book->currentPage / 2) * 2;
+
+const int lastSpreadStart =
+    ((contentPageCount - 1) / 2) * 2;
+
+if (book->currentPage > lastSpreadStart)
+{
+    ESP_LOGW(
+        TAG,
+        "TXT currentPage %d out of range; clamping to %d",
+        book->currentPage,
+        lastSpreadStart
+    );
+
+    book->currentPage = lastSpreadStart;
+}
+
+ESP_LOGI(
+    TAG,
+    "TXT indexed: %d content pages, %d total pages, currentPage=%d",
+    contentPageCount,
+    book->totalPageCount,
+    book->currentPage
+);
+}
+int Reader::renderTxtPage(
+    int pageIndex,
+    unsigned char *framebuffer
+)
+{
+    if (!txt || !renderer || !book)
+    {
+        return -1;
+    }
+
+    renderer->clearScreenBuffer(framebuffer);
+    renderer->framebuffer = framebuffer;
+
+    // A TXT page must correspond to an indexed page start.
+    // The right side of the final spread may be a padded page.
+    if (pageIndex < 0 ||
+        pageIndex >= static_cast<int>(txtPageStarts.size()))
+    {
+        renderer->drawPageOverlay(
+            framebuffer,
+            pageIndex + 1,
+            book->totalPageCount
+        );
+
+        return 0;
+    }
+
+    const TxtPageStart pageStart =
+        txtPageStarts[pageIndex];
+
+    if (!txt->seek(pageStart.lineOffset))
+    {
+        ESP_LOGE(
+            TAG,
+            "Failed to seek TXT page %d to offset %ld",
+            pageIndex,
+            pageStart.lineOffset
+        );
+
+        return -1;
+    }
+
+    const int fontHeight =
+        renderer->fontHandler.currentFont.lineHeight +
+        Device::getInstance().renderSettings.lineSpacing;
+
+    const int maxLines =
+        (EPD_WIDTH / fontHeight) -
+        Device::getInstance().renderSettings.marginsVertical -
+        1;
+
+    int currentLine =
+        Device::getInstance().renderSettings.marginsVertical;
+
+    bool firstLine = true;
+
+    std::string line;
+
+    while (currentLine < maxLines)
+    {
+        if (!txt->readLine(line))
+        {
+            break;
+        }
+
+        std::vector<int> codePoints =
+            utf8ToCodePoints(line);
+
+        std::vector<std::pair<size_t, size_t>> segments =
+            wrapTxtLine(codePoints, renderer);
+
+        size_t firstSegment = 0;
+
+        // The page may begin partway through a long wrapped source line.
+        if (firstLine)
+        {
+            for (size_t i = 0; i < segments.size(); ++i)
+            {
+                if (segments[i].first >= pageStart.codePointOffset)
+                {
+                    firstSegment = i;
+                    break;
+                }
+            }
+
+            if (segments.empty())
+            {
+                firstSegment = 0;
+            }
+        }
+
+        for (size_t i = firstSegment; i < segments.size(); ++i)
+        {
+            if (currentLine >= maxLines)
+            {
+                break;
+            }
+
+            const size_t start = segments[i].first;
+            const size_t end = segments[i].second;
+
+            std::vector<int> text(
+                codePoints.begin() + start,
+                codePoints.begin() + end
+            );
+
+            std::vector<int> boldMask(
+                text.size(),
+                0
+            );
+
+            std::vector<int> italicsMask(
+                text.size(),
+                0
+            );
+
+            const int yPos =
+                EPD_WIDTH -
+                (currentLine + 1) * fontHeight;
+
+            const int xPos =
+                (GLYPH_WIDTH / 2) *
+                (
+                    1 +
+                    Device::getInstance()
+                        .renderSettings.marginsHorizontal
+                );
+
+            renderer->drawString(
+                xPos,
+                yPos,
+                text,
+                1,
+                boldMask,
+                italicsMask,
+                true,
+                false
+            );
+
+            currentLine++;
+        }
+
+        firstLine = false;
+    }
+
+    renderer->drawPageOverlay(
+        framebuffer,
+        pageIndex + 1,
+        book->totalPageCount
+    );
+
+    return 0;
 }
 
 void Reader::addBookMark()
@@ -451,6 +969,12 @@ void Reader::upButtonAction()
 {
     if(state==State::Reading)
     {
+
+        if (txt)
+        {
+            // TXT files have no EPUB table of contents.
+            return;
+        }
         //Device::buzz();
         state = State::BookMarkMenu;
         bookMarkMenuHandler = new BookMarkMenuHandler(book,renderer,epub,leftPageFrameBuffer,rightPageFrameBuffer);
@@ -546,8 +1070,16 @@ void Reader::middleButtonAction()
     if(state==State::Reading)
     {
        // Device::buzz();
-        if (epub) {
-        delete epub;
+        if (epub)
+        {
+            delete epub;
+            epub = nullptr;
+        }
+
+        if (txt)
+        {
+            delete txt;
+            txt = nullptr;
         }
         Device::getInstance().state=Device::State::Menu;
         //Device::getInstance()->saveAppState();

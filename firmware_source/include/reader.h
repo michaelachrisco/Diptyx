@@ -7,6 +7,7 @@
 #include <Epub.h>
 #include "bookHandler.h"
 #include "bookMarkMenuHandler.h"
+#include "TxtFile.h"
 extern "C" {
 
 // Display resolution
@@ -66,6 +67,9 @@ public:
     int findCurrentBookMarkIndex();
 
     Epub *epub = nullptr;
+    TxtFile *txt = nullptr;
+
+
     Renderer* renderer = nullptr;
     BookMarkMenuHandler *bookMarkMenuHandler = nullptr;
     Book *book = nullptr;
@@ -77,7 +81,21 @@ public:
     unsigned char* leftPageFrameBufferPrevious;
     unsigned char* rightPageFrameBufferPrevious;
     //unsigned char* activeFrameBuffer;
-private:
+    private:
+        struct TxtPageStart
+        {
+            long lineOffset;
+            size_t codePointOffset;
+        };
+
+        std::vector<TxtPageStart> txtPageStarts;
+
+        bool isTxtBook() const;
+        void indexTxtPages();
+        int renderTxtPage(
+            int pageIndex,
+            unsigned char *framebuffer
+        );
 };
 
 int countBlackPixels(unsigned char* framebuffer);
