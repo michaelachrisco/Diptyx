@@ -842,15 +842,12 @@ int Reader::renderTxtPage(
                 (1 + Device::getInstance()
                           .renderSettings.marginsHorizontal);
 
-            renderer->drawString(
+            renderer->drawText(
                 xPos,
                 yPos,
-                text,
-                1,
-                boldMask,
-                italicsMask,
-                true,
-                true
+                text.data(),
+                static_cast<int>(text.size()),
+                1
             );
 
             currentLine++;
