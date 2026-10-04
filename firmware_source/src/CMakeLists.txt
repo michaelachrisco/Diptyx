@@ -5,7 +5,7 @@ FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.cpp)
 idf_component_register(
     SRCS ${app_sources}
     INCLUDE_DIRS "." "../include"
-    REQUIRES esp_tinyusb
+    REQUIRES esp_tinyusb esp_http_server esp_wifi esp_netif esp_event fatfs
 )
 
 
