@@ -7,7 +7,7 @@
 #include <strings.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <sys/statvfs.h>
+#include "esp_vfs_fat.h"
 #include <unistd.h>
 
 #include "esp_log.h"
@@ -260,13 +260,23 @@ void WebFilesStorage::closeBook(void* fileHandle) const {
 }
 
 uint64_t WebFilesStorage::totalBytes() const {
-    struct statvfs vfs{};
-    if (statvfs(kRoot, &vfs) != 0) return 0;
-    return static_cast<uint64_t>(vfs.f_blocks) * vfs.f_frsize;
+    uint64_t total = 0;
+    uint64_t free = 0;
+
+    if (esp_vfs_fat_info(kRoot, &total, &free) != ESP_OK) {
+        return 0;
+    }
+
+    return total;
 }
 
 uint64_t WebFilesStorage::freeBytes() const {
-    struct statvfs vfs{};
-    if (statvfs(kRoot, &vfs) != 0) return 0;
-    return static_cast<uint64_t>(vfs.f_bavail) * vfs.f_frsize;
+    uint64_t total = 0;
+    uint64_t free = 0;
+
+    if (esp_vfs_fat_info(kRoot, &total, &free) != ESP_OK) {
+        return 0;
+    }
+
+    return free;
 }

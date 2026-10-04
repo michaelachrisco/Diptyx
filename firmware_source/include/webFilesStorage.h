@@ -23,7 +23,7 @@ public:
     bool finishUpload(const std::string& name, bool replaceExisting);
     void abortUpload();
 
-    bool deleteBook(const std::string& name);
+    bool deleteBook(const std::string& name) const;
     bool openBookForRead(const std::string& name, void*& fileHandle, uint64_t& size) const;
     size_t readBook(void* fileHandle, void* buffer, size_t size) const;
     void closeBook(void* fileHandle) const;
