@@ -2,6 +2,7 @@
 #include "htmlParser.h"
 #include "pageShowcase.h"
 #include "device.h"
+#include "webFiles.h"
 #include "esp_log.h"
 #include "usbMassStorage.h"
 #include "driver/adc.h"
@@ -9,6 +10,7 @@
 #include "tinyusb_cdc_acm.h"
 #include "tinyusb_console.h"
 #include "tinyusb_default_config.h"
+
 
 PageShowcase pageShowcase;
 
@@ -156,6 +158,16 @@ MenuHandler::MenuHandler(Renderer *renderer)
     }
 );
 
+auto webFilesButton = std::make_shared<ActionElement>(
+    renderer,
+    "Web Files",
+    "Manage ebooks over Wi-Fi",
+    []() {
+        WebFiles::run();
+    }
+);
+
+
 auto fileTransferButton = std::make_shared<ActionElement>(
     renderer,
     "Transfer files",
@@ -205,6 +217,7 @@ auto fileTransferButton = std::make_shared<ActionElement>(
     mainMenu->addChild(manualButton);
     mainMenu->addChild(versionButton);
     mainMenu->addChild(settingsMenu);
+    mainMenu->addChild(webFilesButton);
     mainMenu->addChild(fileTransferButton);
     settingsMenu->addChild(readSettingsMenu);
     settingsMenu->addChild(deviceSettingsMenu);
