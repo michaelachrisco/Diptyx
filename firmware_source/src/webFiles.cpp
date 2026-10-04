@@ -68,7 +68,14 @@ void WebFiles::run() {
     }
 
     const std::string ip = wifi.ipAddress();
-    showMessage(std::string("WEB ") + ip + " PW:" + wifi.password());
+   showMessage(
+    std::string("WEB ") +
+    wifi.ssid() +
+    " " +
+    ip +
+    " PW:" +
+    wifi.password()
+);
 
     const int64_t startUs = esp_timer_get_time();
     int64_t powerPressedAt = -1;
